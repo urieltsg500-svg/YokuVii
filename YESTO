@@ -249,46 +249,6 @@ TSG.MineRemote = (keyedRemotes and rawget(keyedRemotes, "mine")) or (interaction
 TSG.ChopRemote = (keyedRemotes and rawget(keyedRemotes, "chop")) or (interactionsFolder and interactionsFolder:FindFirstChild("chop"))
 TSG.MeleeAI = interactionsFolder and interactionsFolder:FindFirstChild("meleeAI")
 
--- Hook for meleeAI FireServer
-if TSG.MeleeAI then
-	local Event = TSG.MeleeAI
-	local mtHook; mtHook = hookmetamethod(game, "__namecall", function(...) 
-		local self = ... 
-	
-		if rawequal(self, Event) and getnamecallmethod() == "FireServer" then 
-			local Args = table.pack(...) 
-			
-			local Result = table.pack( 
-				mtHook(self, table.unpack(Args, 1, Args.n)) 
-			) 
-	
-			print(`Intercepted (__namecall) {Event.Name}:FireServer()`, ...) 
-	
-			return table.unpack(Result, 1, Result.n) 
-		end 
-	
-		return mtHook(...) 
-	end) 
-	
-	local OldFireServer; OldFireServer = hookfunction(Event.FireServer, function(...) 
-		local self = ... 
-	
-		if rawequal(self, Event) then 
-			local Args = table.pack(...) 
-	
-			local Result = table.pack( 
-				OldFireServer(table.unpack(Args, 1, Args.n)) 
-			) 
-	
-			print(`Intercepted (__index) {Event.Name}:FireServer()`, self, table.unpack(Result, 1, Result.n)) 
-	
-			return table.unpack(Result, 1, Result.n) 
-		end 
-	
-		return OldFireServer(self, ...) 
-	end)
-end
-
 Library.Font = Enum.Font.Gotham
 
 -- Window
@@ -1035,26 +995,11 @@ originalNamecall = hookmetamethod(game, "__namecall", function(...)
 
 	if rawequal(self, BossDamageEvent) and method == "FireServer" then
 		if Toggles.NoBossDamage and Toggles.NoBossDamage.Value then
-			print(`Intercepted (__namecall) {BossDamageEvent.Name}:FireServer()`, ...)
-			return -- Block the attack to prevent damage (don't return nil)
+			return -- Block the attack to prevent damage
 		end
 	end
 
 	return originalNamecall(...)
-end)
-
-local originalFireServer
-originalFireServer = hookfunction(BossDamageEvent.FireServer, function(...)
-	local self = ...
-
-	if rawequal(self, BossDamageEvent) then
-		if Toggles.NoBossDamage and Toggles.NoBossDamage.Value then
-			print(`Intercepted (__index) {BossDamageEvent.Name}:FireServer()`, self, ...)
-			return -- Block the attack to prevent damage (don't return nil)
-		end
-	end
-
-	return originalFireServer(...)
 end)
 
 local function noBossDamageToggle(state)
@@ -1556,15 +1501,11 @@ local function attackNPC(slot, target)
 		isServerModel = true
 	end
 
-	Library:Notify({ Title = "attackNPC", Description = "Target: " .. target.Name .. ", Server: " .. tostring(isServerModel), Time = 1 })
-
 	if isServerModel then
 		-- It's already the server model! Fire meleeAI directly with target
 		if TSG.MeleeAI then
-			Library:Notify({ Title = "attackNPC", Description = "Firing meleeAI", Time = 1 })
 			pcall(TSG.MeleeAI.FireServer, TSG.MeleeAI, slot, target)
 		else
-			Library:Notify({ Title = "attackNPC", Description = "Firing meleeAnimal", Time = 1 })
 			pcall(TSG.MeleeAnimalRemote.FireServer, TSG.MeleeAnimalRemote, slot, target)
 		end
 	else
@@ -1572,14 +1513,11 @@ local function attackNPC(slot, target)
 		if AiController and TSG.MeleeAI then
 			local serverModel = AiController:GetServerModelFromClientModel(target)
 			if serverModel then
-				Library:Notify({ Title = "attackNPC", Description = "Got server model: " .. serverModel.Name, Time = 1 })
 				pcall(TSG.MeleeAI.FireServer, TSG.MeleeAI, slot, serverModel)
 			else
-				Library:Notify({ Title = "attackNPC", Description = "No server model, firing meleeAnimal", Time = 1 })
 				pcall(TSG.MeleeAnimalRemote.FireServer, TSG.MeleeAnimalRemote, slot, target)
 			end
 		else
-			Library:Notify({ Title = "attackNPC", Description = "No AiController/meleeAI, firing meleeAnimal", Time = 1 })
 			pcall(TSG.MeleeAnimalRemote.FireServer, TSG.MeleeAnimalRemote, slot, target)
 		end
 	end
