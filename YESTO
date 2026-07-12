@@ -1198,6 +1198,21 @@ CombatRight:AddToggle("HighlightTarget", {
 	Default = true,
 })
 
+local CombatSilentAim = Tabs.Combat:AddRightGroupbox("Silent Aim (HB)", "target")
+
+CombatSilentAim:AddToggle("SilentAim", {
+	Text = "Enable Silent Aim",
+	Default = false,
+})
+
+CombatSilentAim:AddSlider("SilentAimFOV", {
+	Text = "FOV Slider",
+	Default = 120,
+	Min = 10,
+	Max = 600,
+	Rounding = 0,
+})
+
 local CombatAimbot = Tabs.Combat:AddRightGroupbox("AIMBOT", "eye")
 
 CombatAimbot:AddToggle("AimbotLockOn", {
@@ -1605,6 +1620,451 @@ pcall(function()
 	end
 end)
 
+-- Silent Aim (HB) Script
+local saConfig = {
+	Enabled = false,
+	FOVSize = 120,
+	TargetPart = "Head", -- Head or HumanoidRootPart
+	HitChance = 100,
+	HBTransparency = 0.5,
+	ScaleToScreen = false,
+	WallCheck = false,
+	OriginalSizes = {},
+	ActiveApplied = {},
+	TargetHBSizes = {},
+	CenterLocked = {},
+	CurrentTarget = nil
+}
+
+-- Initialize FOV size from options (wait a bit to make sure Options are loaded)
+task.spawn(function()
+	task.wait(1)
+	if Options.SilentAimFOV then
+		saConfig.FOVSize = Options.SilentAimFOV.Value
+	end
+end)
+
+local saFovCircle = nil
+pcall(function()
+	if typeof(Drawing) ~= "nil" then
+		saFovCircle = Drawing.new("Circle")
+		saFovCircle.Thickness = 1.5
+		saFovCircle.Color = Color3.fromRGB(255, 165, 0)
+		saFovCircle.Filled = false
+		saFovCircle.Transparency = 0.7
+		saFovCircle.Visible = false
+	end
+end)
+
+local function saGetTargetCharacter(player)
+	return player and player.Character
+end
+
+local function saPlrAlive(player)
+	local char = saGetTargetCharacter(player)
+	if not char then return false end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	return hum and hum.Health > 0
+end
+
+local function saIsTeammate(player)
+	-- We'll just assume everyone is an enemy for now
+	return false
+end
+
+local function saWallCheck(targetPos, cameraPos)
+	if not saConfig.WallCheck then return true end
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+	local rayResult = workspace:Raycast(cameraPos, targetPos - cameraPos, rayParams)
+	if rayResult then
+		-- If the ray hits something, check if it's the target's character
+		local hitChar = rayResult.Instance:FindFirstAncestorOfClass("Model")
+		local hitPlayer = hitChar and Players:GetPlayerFromCharacter(hitChar)
+		return hitPlayer ~= nil
+	end
+	return true
+end
+
+local function saSaveOriginalPartInfo(targetPlayer, part)
+	if not targetPlayer or not part then return end
+	saConfig.OriginalSizes[targetPlayer] = {
+		partName = part.Name or "Head",
+		size = part.Size
+	}
+end
+
+local function saChooseBodyPartInstance(target)
+	local char = saGetTargetCharacter(target)
+	if not char then return nil, "Head" end
+	if saConfig.TargetPart == "Head" then
+		return char:FindFirstChild("Head"), "Head"
+	else
+		return char:FindFirstChild("HumanoidRootPart"), "HumanoidRootPart"
+	end
+end
+
+local function saApplySizeToPart(targetPlayer, targetDiameter, chosenPart)
+	local char = saGetTargetCharacter(targetPlayer)
+	if not char or targetPlayer == LocalPlayer then return end
+	if not saPlrAlive(targetPlayer) then return end
+	
+	local part = chosenPart
+	local partName = nil
+	if not part then
+		part, partName = saChooseBodyPartInstance(targetPlayer)
+	else
+		partName = part.Name
+	end
+	if not part then return end
+	
+	if not saConfig.OriginalSizes[targetPlayer] then
+		saSaveOriginalPartInfo(targetPlayer, part)
+	end
+	
+	local expansionSize = Vector3.new(targetDiameter, targetDiameter, targetDiameter)
+	
+	local useExpanded = true
+	local chance = math.clamp(saConfig.HitChance, 0, 100)
+	if chance <= 0 then
+		useExpanded = false
+	elseif chance < 100 then
+		if math.random(1, 100) <= chance then
+			useExpanded = true
+		else
+			useExpanded = false
+		end
+	else
+		useExpanded = true
+	end
+	
+	if useExpanded then
+		saConfig.TargetHBSizes[targetPlayer] = expansionSize
+	else
+		local original = saConfig.OriginalSizes[targetPlayer]
+		if original and original.size then
+			saConfig.TargetHBSizes[targetPlayer] = original.size
+		else
+			saConfig.TargetHBSizes[targetPlayer] = Vector3.new(0.01, 0.01, 0.01)
+		end
+	end
+	
+	saConfig.ActiveApplied[targetPlayer] = true
+end
+
+local function saRestorePartForPlayer(targetPlayer)
+	if not targetPlayer or targetPlayer == LocalPlayer then return end
+	
+	local char = saGetTargetCharacter(targetPlayer)
+	local original = saConfig.OriginalSizes[targetPlayer]
+	if not original then
+		saConfig.ActiveApplied[targetPlayer] = nil
+		saConfig.TargetHBSizes[targetPlayer] = nil
+		return
+	end
+	
+	local part = nil
+	if char then
+		part = char:FindFirstChild(original.partName) or char:FindFirstChild(saConfig.TargetPart) or char:FindFirstChild("Head")
+	end
+	
+	if part and original.size then
+		pcall(function()
+			part.Size = original.size
+			part.Transparency = 1
+			part.CanCollide = false
+			part.Massless = false
+			if part:IsA("BasePart") then
+				part.Velocity = Vector3.new(0, 0, 0)
+				part.RotVelocity = Vector3.new(0, 0, 0)
+			end
+		end)
+	end
+	
+	saConfig.ActiveApplied[targetPlayer] = nil
+	saConfig.OriginalSizes[targetPlayer] = nil
+	saConfig.TargetHBSizes[targetPlayer] = nil
+	saConfig.CenterLocked[targetPlayer] = nil
+end
+
+local function saHB()
+	local targetsToRemove = {}
+	for playerObj, targetSize in pairs(saConfig.TargetHBSizes) do
+		if playerObj and playerObj ~= LocalPlayer and saGetTargetCharacter(playerObj) and saPlrAlive(playerObj) then
+			local part = saGetTargetCharacter(playerObj):FindFirstChild(saConfig.OriginalSizes[playerObj] and saConfig.OriginalSizes[playerObj].partName)
+				or saGetTargetCharacter(playerObj):FindFirstChild(saConfig.TargetPart)
+				or saGetTargetCharacter(playerObj):FindFirstChild("Head")
+			if not part then
+				local p1 = saGetTargetCharacter(playerObj):FindFirstChild("HumanoidRootPart")
+				local p2 = saGetTargetCharacter(playerObj):FindFirstChild("Head")
+				part = p1 or p2
+			end
+			
+			if part then
+				local currentSize = part.Size
+				local newSize = currentSize:Lerp(targetSize, 1)
+				
+				pcall(function()
+					part.Size = newSize
+					part.Transparency = saConfig.HBTransparency
+					part.CanCollide = false
+					if part.Name == "Head" then
+						part.Massless = true
+					elseif part.Name == "HumanoidRootPart" then
+						part.Massless = false
+					end
+				end)
+			end
+		else
+			if playerObj ~= LocalPlayer then
+				table.insert(targetsToRemove, playerObj)
+			end
+		end
+	end
+	
+	for _, playerObj in ipairs(targetsToRemove) do
+		saRestorePartForPlayer(playerObj)
+	end
+end
+
+local function saOnRenderStep()
+	local camera = workspace.CurrentCamera
+	if not camera or not camera.Parent then return end
+	
+	if not saConfig.Enabled then
+		if saFovCircle then
+			saFovCircle.Visible = false
+		end
+		return
+	else
+		if saFovCircle then
+			saFovCircle.Visible = true
+		end
+	end
+	
+	local viewportSize = camera.ViewportSize
+	local center = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
+	local radiusPx = saConfig.FOVSize
+	
+	if saFovCircle then
+		saFovCircle.Position = center
+		saFovCircle.Radius = radiusPx
+	end
+	
+	local candidates = {}
+	
+	for _, pl in ipairs(Players:GetPlayers()) do
+		if pl == LocalPlayer then continue end
+		local bodyPart, chosenName = saChooseBodyPartInstance(pl)
+		local humanoid = nil
+		local char = saGetTargetCharacter(pl)
+		if char then
+			humanoid = char:FindFirstChildOfClass("Humanoid")
+		end
+		
+		if bodyPart and humanoid and humanoid.Health > 0 then
+			local skip = false
+			if saIsTeammate(pl) then
+				skip = true
+			end
+			
+			if not skip then
+				local topPos = bodyPart.Position
+				local screenPos3, onScreen = camera:WorldToViewportPoint(topPos)
+				if onScreen then
+					local screenVec = Vector2.new(screenPos3.X, screenPos3.Y)
+					local distPx = (screenVec - center).Magnitude
+					
+					if distPx <= radiusPx then
+						local cameraPos = camera.CFrame.Position
+						local targetPos = bodyPart.Position
+						if saWallCheck(targetPos, cameraPos) then
+							local worldDist = (cameraPos - targetPos).Magnitude
+							table.insert(candidates, {
+								player = pl,
+								part = bodyPart,
+								partName = chosenName,
+								screenDist = distPx,
+								worldDist = worldDist,
+								screenPos = screenVec,
+								screenPos3 = screenPos3,
+								humanoid = humanoid
+							})
+						end
+					end
+				end
+			end
+		else
+			if saConfig.ActiveApplied[pl] then
+				saRestorePartForPlayer(pl)
+			end
+		end
+	end
+	
+	local best = nil
+	if #candidates > 0 then
+		local bestWorldDist = math.huge
+		for _, c in ipairs(candidates) do
+			if c.worldDist < bestWorldDist then
+				bestWorldDist = c.worldDist
+				best = c
+			end
+		end
+	end
+	
+	if best then
+		if saFovCircle then
+			saFovCircle.Color = Color3.fromRGB(255, 255, 0)
+		end
+	else
+		if saFovCircle then
+			saFovCircle.Color = Color3.fromRGB(255, 165, 0)
+		end
+	end
+	
+	if saConfig.CurrentTarget ~= (best and best.player) then
+		saConfig.CurrentTarget = best and best.player
+	end
+	
+	local targetsToRemove = {}
+	for pl, _ in pairs(saConfig.ActiveApplied) do
+		local shouldRemove = true
+		
+		if best and pl == best.player then
+			shouldRemove = false
+		end
+		
+		if shouldRemove or not saPlrAlive(pl) then
+			table.insert(targetsToRemove, pl)
+		end
+	end
+	
+	for _, pl in ipairs(targetsToRemove) do
+		saRestorePartForPlayer(pl)
+	end
+	
+	if best and saPlrAlive(best.player) then
+		local function calculateDiameter(worldDist, screenRadius, cam)
+			local viewportSize = cam.ViewportSize
+			local H = viewportSize.Y
+			local vFovDeg = cam.FieldOfView
+			local vFovRad = math.rad(vFovDeg)
+			local halfVFov = vFovRad / 2
+			local alpha = (screenRadius / (H / 2)) * halfVFov
+			local worldHalf = worldDist * math.tan(alpha)
+			local worldFull = worldHalf * 2
+			return math.max(0.01, worldFull)
+		end
+		
+		local diameter = calculateDiameter(best.worldDist, radiusPx, camera)
+		diameter = math.max(0.01, diameter)
+		
+		local localChar = LocalPlayer.Character
+		local targetChar = saGetTargetCharacter(best.player)
+		local distance = math.huge
+		
+		if localChar and targetChar then
+			local localRoot = localChar:FindFirstChild("HumanoidRootPart") or localChar:FindFirstChild("Head")
+			local targetRoot = targetChar:FindFirstChild("HumanoidRootPart") or targetChar:FindFirstChild("Head")
+			
+			if localRoot and targetRoot then
+				distance = (localRoot.Position - targetRoot.Position).Magnitude
+			end
+		end
+		
+		local studz = 5 
+		if distance <= studz then
+			diameter = math.max(0.05, math.min(0.1, diameter))
+		end
+		
+		diameter = math.max(0.01, diameter)
+		
+		if best.screenDist <= 1 then
+			if not saConfig.CenterLocked[best.player] then
+				saConfig.CenterLocked[best.player] = true
+				saApplySizeToPart(best.player, diameter, best.part)
+			else
+				local prevSize = saConfig.TargetHBSizes[best.player]
+				if prevSize then
+					diameter = prevSize.X
+				end
+				saApplySizeToPart(best.player, diameter, best.part)
+			end
+		else
+			saConfig.CenterLocked[best.player] = nil
+			saApplySizeToPart(best.player, diameter, best.part)
+		end
+	end
+end
+
+local function saCleanup()
+	for pl, _ in pairs(saConfig.ActiveApplied) do
+		saRestorePartForPlayer(pl)
+	end
+	if saFovCircle then
+		saFovCircle.Visible = false
+	end
+end
+
+-- Handle other players leaving
+local function saOnPlayerRemoving(player)
+	if player == LocalPlayer then return end
+	saRestorePartForPlayer(player)
+end
+
+-- Handle other players respawning
+local function saOnOtherPlayerCharacterAdded(player, char)
+	if player == LocalPlayer then return end
+	-- If we had active applied for this player, reset it
+	if saConfig.ActiveApplied[player] then
+		saRestorePartForPlayer(player)
+	end
+end
+
+-- Setup connections
+track("SA_PlayerRemoving", Players.PlayerRemoving:Connect(saOnPlayerRemoving))
+
+for _, player in ipairs(Players:GetPlayers()) do
+	if player ~= LocalPlayer then
+		track("SA_CharAdded_" .. player.Name, player.CharacterAdded:Connect(function(char)
+			saOnOtherPlayerCharacterAdded(player, char)
+		end))
+	end
+end
+
+track("SA_PlayerAdded", Players.PlayerAdded:Connect(function(player)
+	if player == LocalPlayer then return end
+	track("SA_CharAdded_" .. player.Name, player.CharacterAdded:Connect(function(char)
+		saOnOtherPlayerCharacterAdded(player, char)
+	end))
+end))
+
+-- Handle our own respawn
+track("SA_LocalCharacterAdded", LocalPlayer.CharacterAdded:Connect(function()
+	-- When we respawn, just make sure everything's clean
+	saCleanup()
+end))
+
+Toggles.SilentAim:OnChanged(function()
+	disconnect("SilentAimRender")
+	disconnect("SilentAimHB")
+	if Toggles.SilentAim.Value then
+		saConfig.Enabled = true
+		track("SilentAimRender", RunService.RenderStepped:Connect(saOnRenderStep))
+		track("SilentAimHB", RunService.Heartbeat:Connect(saHB))
+		Library:Notify({ Title = "Silent Aim (HB)", Description = "Enabled", Time = 2 })
+	else
+		saConfig.Enabled = false
+		saCleanup()
+		Library:Notify({ Title = "Silent Aim (HB)", Description = "Disabled", Time = 2 })
+	end
+end)
+
+Options.SilentAimFOV:OnChanged(function()
+	saConfig.FOVSize = Options.SilentAimFOV.Value
+end)
+
 local function getClosestPlayerToCenter()
 	local closestPlayer = nil
 	local shortestDistance = math.huge
@@ -1677,13 +2137,18 @@ Toggles.KillAura:OnChanged(function()
 	end
 end)
 
+local lastAutoSwing = 0
 Toggles.AutoSwing:OnChanged(function()
 	disconnect("AutoSwing")
 	if Toggles.AutoSwing.Value then
 		_G.T = true
-		track("AutoSwing", RunService.RenderStepped:Connect(function()
-			if _G.T and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool") then
-				LocalPlayer.Character:FindFirstChildOfClass("Tool"):Activate()
+		track("AutoSwing", RunService.Heartbeat:Connect(function()
+			if _G.T and tick() - lastAutoSwing >= 0.2 then
+				local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+				if tool then
+					tool:Activate()
+					lastAutoSwing = tick()
+				end
 			end
 		end))
 	else
@@ -2678,8 +3143,6 @@ local function aiAuraLoop()
 	if not closest then
 		return
 	end
-
-	Library:Notify({ Title = "AI Aura", Description = "Target: " .. closest.Name .. " (Distance: " .. math.floor(dist) .. ")", Time = 1 })
 
 	local slot = tonumber(Options.AiAuraSlot.Value) or 1
 	lastAiAuraHit = tick()
