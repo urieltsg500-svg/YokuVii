@@ -1776,35 +1776,6 @@ pcall(function()
 	end
 end)
 
-
-
-local function getClosestPlayerToCenter()
-	local closestPlayer = nil
-	local shortestDistance = math.huge
-	local camera = workspace.CurrentCamera
-	local viewportSize = camera.ViewportSize
-	local center = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer and player.Character then
-			local torso = player.Character:FindFirstChild("LowerTorso") or player.Character:FindFirstChild("UpperTorso") or player.Character:FindFirstChild("Torso") or player.Character:FindFirstChild("HumanoidRootPart")
-			local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-			if torso and humanoid and humanoid.Health > 0 then
-				local screenPos, onScreen = camera:WorldToViewportPoint(torso.Position)
-				if onScreen then
-					local distance = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-					local fovRadius = (Options.AimbotFOV and Options.AimbotFOV.Value) or 100
-					if distance < shortestDistance and distance <= fovRadius then
-						shortestDistance = distance
-						closestPlayer = torso
-					end
-				end
-			end
-		end
-	end
-	return closestPlayer
-end
-
 Toggles.AimbotLockOn:OnChanged(function()
 	disconnect("AimbotLoop")
 	disconnect("AimbotFOVCircleUpdate")
