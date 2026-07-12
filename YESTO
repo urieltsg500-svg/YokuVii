@@ -2,7 +2,7 @@
 -- Docs: https://docs.mspaint.cc/obsidian
 
 if getgenv().TSG_OBSIDIAN_LOADED then
-	return warn("[TSG] Script already loaded ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â rejoin to re-execute.")
+	return warn("[TSG] Script already loaded Ã¢â‚¬â€ rejoin to re-execute.")
 end
 getgenv().TSG_OBSIDIAN_LOADED = true
 
@@ -2961,7 +2961,7 @@ local waypoints = {}
 local function updateWaypointDropdown()
 	local list = {}
 	for name in pairs(waypoints) do
-		table.insert(list, "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Âµ " .. name)
+		table.insert(list, "ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Âµ " .. name)
 	end
 	table.sort(list)
 	Options.WaypointList:SetValues(list)
@@ -3084,6 +3084,41 @@ VisualFPS:AddToggle("DisableShadows", {
 			for _, player in ipairs(Players:GetPlayers()) do
 				disconnect("DisableShadows_CharAdded_" .. player.Name)
 			end
+		end
+	end,
+})
+
+VisualFPS:AddToggle("RemoveParticles", {
+	Text = "Remove Particles",
+	Default = false,
+	Callback = function(state)
+		local function removeParticle(v)
+			if v:IsA("ParticleEmitter") or v:IsA("Fire") or v:IsA("Smoke") or v:IsA("Sparkles") or v:IsA("Explosion") or v:IsA("Trail") then
+				pcall(function() v:Destroy() end)
+			end
+		end
+		
+		if state then
+			-- Remove existing particles in batches
+			local allDescendants = workspace:GetDescendants()
+			for i = 1, #allDescendants, 100 do
+				task.wait()
+				for j = i, math.min(i + 99, #allDescendants) do
+					removeParticle(allDescendants[j])
+				end
+			end
+			
+			-- Connect for new particles
+			track("RemoveParticles", workspace.DescendantAdded:Connect(function(v)
+				if Toggles.RemoveParticles.Value then
+					removeParticle(v)
+				end
+			end))
+			
+			Library:Notify({ Title = "Remove Particles", Description = "Enabled", Time = 2 })
+		else
+			disconnect("RemoveParticles")
+			Library:Notify({ Title = "Remove Particles", Description = "Disabled", Time = 2 })
 		end
 	end,
 })
