@@ -3095,46 +3095,54 @@ VisualFPS:AddToggle("RemoveDroppedItems", {
 	Text = "Remove Dropped Items",
 	Default = false,
 	Callback = function(state)
-		if state then
-			-- Hide all existing dropped items
-			for _, item in ipairs(CollectionService:GetTagged("DROPPED_ITEM")) do
-				if item:IsA("BasePart") then
-					if not originalTransparencies[item] then
-						originalTransparencies[item] = item.Transparency
+		pcall(function()
+			if state then
+				-- Hide all existing dropped items
+				for _, item in ipairs(CollectionService:GetTagged("DROPPED_ITEM")) do
+					if item:IsA("BasePart") then
+						if not originalTransparencies[item] then
+							originalTransparencies[item] = item.Transparency
+						end
+						pcall(function()
+							item.Transparency = 1
+							item.CanCollide = false
+						end)
 					end
-					item.Transparency = 1
-					item.CanCollide = false
 				end
-			end
-			
-			-- Hide new dropped items when added
-			track("RemoveDroppedItems_Added", CollectionService:GetInstanceAddedSignal("DROPPED_ITEM"):Connect(function(item)
-				if Toggles.RemoveDroppedItems.Value and item:IsA("BasePart") then
-					if not originalTransparencies[item] then
-						originalTransparencies[item] = item.Transparency
+				
+				-- Hide new dropped items when added
+				track("RemoveDroppedItems_Added", CollectionService:GetInstanceAddedSignal("DROPPED_ITEM"):Connect(function(item)
+					if Toggles.RemoveDroppedItems.Value and item:IsA("BasePart") then
+						if not originalTransparencies[item] then
+							originalTransparencies[item] = item.Transparency
+						end
+						pcall(function()
+							item.Transparency = 1
+							item.CanCollide = false
+						end)
 					end
-					item.Transparency = 1
-					item.CanCollide = false
+				end))
+				
+				-- Show notifications
+				Library:Notify({ Title = "Remove Dropped Items", Description = "Enabled", Time = 2 })
+			else
+				-- Restore all dropped items
+				for item, original in pairs(originalTransparencies) do
+					if item and item.Parent then
+						pcall(function()
+							item.Transparency = original
+							item.CanCollide = true
+						end)
+					end
 				end
-			end))
-			
-			-- Show notifications
-			Library:Notify({ Title = "Remove Dropped Items", Description = "Enabled", Time = 2 })
-		else
-			-- Restore all dropped items
-			for item, original in pairs(originalTransparencies) do
-				if item and item.Parent then
-					item.Transparency = original
-					item.CanCollide = true
-				end
+				originalTransparencies = {} -- Clear the table instead of table.clear
+				
+				-- Disconnect the connection
+				disconnect("RemoveDroppedItems_Added")
+				
+				Library:Notify({ Title = "Remove Dropped Items", Description = "Disabled", Time = 2 })
 			end
-			table.clear(originalTransparencies)
-			
-			-- Disconnect the connection
-			disconnect("RemoveDroppedItems_Added")
-			
-			Library:Notify({ Title = "Remove Dropped Items", Description = "Disabled", Time = 2 })
-		end
+		end)
 	end,
 })
 
