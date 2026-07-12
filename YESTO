@@ -301,12 +301,13 @@ end)
 
 local Tabs = {
 	Main = Window:AddTab("Main", "info"),
-	Player = Window:AddTab("Player", "home"),
+	Player = Window:AddTab("Player", "torch"),
 	Combat = Window:AddTab("Combat", "sword"),
 	Movement = Window:AddTab("Movement", "move"),
 	Farming = Window:AddTab("Farming", "pickaxe"),
 	Teleport = Window:AddTab("Teleport", "map-pin"),
 	Visuals = Window:AddTab("Visuals", "eye"),
+	["Boss Farm"] = Window:AddTab("Boss Farm", "skull"),
 	["Fun Box"] = Window:AddTab("Fun Box", "gamepad"),
 	["UI Settings"] = Window:AddTab("UI Settings", "settings"),
 }
@@ -1198,8 +1199,6 @@ CombatRight:AddToggle("HighlightTarget", {
 	Default = true,
 })
 
-
-
 local CombatAimbot = Tabs.Combat:AddRightGroupbox("AIMBOT", "eye")
 
 CombatAimbot:AddToggle("AimbotLockOn", {
@@ -1209,19 +1208,6 @@ CombatAimbot:AddToggle("AimbotLockOn", {
 
 CombatAimbot:AddSlider("AimbotFOV", {
 	Text = "FOV Slider",
-	Default = 100,
-	Min = 10,
-	Max = 600,
-	Rounding = 0,
-})
-
-CombatAimbot:AddToggle("ProjSilentAim", {
-	Text = "Silent Aim",
-	Default = false,
-})
-
-CombatAimbot:AddSlider("ProjSilentAimFOV", {
-	Text = "Silent Aim FOV",
 	Default = 100,
 	Min = 10,
 	Max = 600,
@@ -1620,37 +1606,22 @@ pcall(function()
 	end
 end)
 
--- Projectile Silent Aim Script
-local checkcaller = checkcaller or function() return false end
-local projSilentAimCircle = nil
-pcall(function()
-	if typeof(Drawing) ~= "nil" then
-		projSilentAimCircle = Drawing.new("Circle")
-		projSilentAimCircle.Thickness = 1.5
-		projSilentAimCircle.Color = Color3.fromRGB(0, 255, 255) -- Cyan circle
-		projSilentAimCircle.Filled = false
-		projSilentAimCircle.Transparency = 1
-		projSilentAimCircle.Visible = false
-	end
-end)
-
-local function getProjSilentAimTarget()
+local function getClosestPlayerToCenter()
 	local closestPlayer = nil
 	local shortestDistance = math.huge
 	local camera = workspace.CurrentCamera
-	if not camera then return nil end
 	local viewportSize = camera.ViewportSize
 	local center = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
-	local fovRadius = (Options.ProjSilentAimFOV and Options.ProjSilentAimFOV.Value) or 100
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player ~= LocalPlayer and player.Character then
-			local torso = player.Character:FindFirstChild("Head") or player.Character:FindFirstChild("HumanoidRootPart") or player.Character:FindFirstChild("Torso")
+			local torso = player.Character:FindFirstChild("LowerTorso") or player.Character:FindFirstChild("UpperTorso") or player.Character:FindFirstChild("Torso") or player.Character:FindFirstChild("HumanoidRootPart")
 			local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
 			if torso and humanoid and humanoid.Health > 0 then
 				local screenPos, onScreen = camera:WorldToViewportPoint(torso.Position)
 				if onScreen then
 					local distance = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+					local fovRadius = (Options.AimbotFOV and Options.AimbotFOV.Value) or 100
 					if distance < shortestDistance and distance <= fovRadius then
 						shortestDistance = distance
 						closestPlayer = torso
@@ -1661,120 +1632,6 @@ local function getProjSilentAimTarget()
 	end
 	return closestPlayer
 end
-
-local Mouse = LocalPlayer:GetMouse()
-
-pcall(function()
-	if typeof(hookmetamethod) == "function" then
-		local oldIndex
-		oldIndex = hookmetamethod(game, "__index", function(self, key)
-			if not checkcaller() and Toggles.ProjSilentAim and Toggles.ProjSilentAim.Value then
-				if self == Mouse then
-					if key == "Hit" then
-						local targetPart = getProjSilentAimTarget()
-						if targetPart then
-							return CFrame.new(targetPart.Position)
-						end
-					elseif key == "Target" then
-						local targetPart = getProjSilentAimTarget()
-						if targetPart then
-							return targetPart
-						end
-					end
-				end
-			end
-			return oldIndex(self, key)
-		end)
-	end
-end)
-
-pcall(function()
-	if typeof(hookmetamethod) == "function" then
-		local oldNamecall
-		oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-			local method = getnamecallmethod()
-			local args = {...}
-			
-			if not checkcaller() and Toggles.ProjSilentAim and Toggles.ProjSilentAim.Value then
-				if self == workspace then
-					if method == "Raycast" then
-						local origin = args[1]
-						local direction = args[2]
-						local params = args[3]
-						
-						local targetPart = getProjSilentAimTarget()
-						if targetPart then
-							local newDirection = (targetPart.Position - origin).Unit * direction.Magnitude
-							args[2] = newDirection
-							return oldNamecall(self, unpack(args))
-						end
-					elseif method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhiteList" then
-						local ray = args[1]
-						local targetPart = getProjSilentAimTarget()
-						if targetPart then
-							local newRay = Ray.new(ray.Origin, (targetPart.Position - ray.Origin).Unit * ray.Direction.Magnitude)
-							args[1] = newRay
-							return oldNamecall(self, unpack(args))
-						end
-					end
-				end
-			end
-			return oldNamecall(self, ...)
-		end)
-	end
-end)
-
-pcall(function()
-	if typeof(hookfunction) == "function" then
-		local oldRaycast
-		oldRaycast = hookfunction(workspace.Raycast, function(self, origin, direction, params)
-			if not checkcaller() and Toggles.ProjSilentAim and Toggles.ProjSilentAim.Value then
-				local targetPart = getProjSilentAimTarget()
-				if targetPart then
-					local newDirection = (targetPart.Position - origin).Unit * direction.Magnitude
-					return oldRaycast(self, origin, newDirection, params)
-				end
-			end
-			return oldRaycast(self, origin, direction, params)
-		end)
-
-		local oldFindPartOnRay
-		oldFindPartOnRay = hookfunction(workspace.FindPartOnRay, function(self, ray, ...)
-			if not checkcaller() and Toggles.ProjSilentAim and Toggles.ProjSilentAim.Value then
-				local targetPart = getProjSilentAimTarget()
-				if targetPart then
-					local newRay = Ray.new(ray.Origin, (targetPart.Position - ray.Origin).Unit * ray.Direction.Magnitude)
-					return oldFindPartOnRay(self, newRay, ...)
-				end
-			end
-			return oldFindPartOnRay(self, ray, ...)
-		end)
-
-		local oldFindPartOnRayWithIgnoreList
-		oldFindPartOnRayWithIgnoreList = hookfunction(workspace.FindPartOnRayWithIgnoreList, function(self, ray, ...)
-			if not checkcaller() and Toggles.ProjSilentAim and Toggles.ProjSilentAim.Value then
-				local targetPart = getProjSilentAimTarget()
-				if targetPart then
-					local newRay = Ray.new(ray.Origin, (targetPart.Position - ray.Origin).Unit * ray.Direction.Magnitude)
-					return oldFindPartOnRayWithIgnoreList(self, newRay, ...)
-				end
-			end
-			return oldFindPartOnRayWithIgnoreList(self, ray, ...)
-		end)
-
-		local oldFindPartOnRayWithWhiteList
-		oldFindPartOnRayWithWhiteList = hookfunction(workspace.FindPartOnRayWithWhiteList, function(self, ray, ...)
-			if not checkcaller() and Toggles.ProjSilentAim and Toggles.ProjSilentAim.Value then
-				local targetPart = getProjSilentAimTarget()
-				if targetPart then
-					local newRay = Ray.new(ray.Origin, (targetPart.Position - ray.Origin).Unit * ray.Direction.Magnitude)
-					return oldFindPartOnRayWithWhiteList(self, newRay, ...)
-				end
-			end
-			return oldFindPartOnRayWithWhiteList(self, ray, ...)
-		end)
-	end
-end)
 
 Toggles.AimbotLockOn:OnChanged(function()
 	disconnect("AimbotLoop")
@@ -1804,28 +1661,6 @@ Toggles.AimbotLockOn:OnChanged(function()
 	end
 end)
 
-Toggles.ProjSilentAim:OnChanged(function()
-	disconnect("ProjSilentAimFOVCircleUpdate")
-	if projSilentAimCircle then projSilentAimCircle.Visible = false end
-
-	if Toggles.ProjSilentAim.Value then
-		track("ProjSilentAimFOVCircleUpdate", RunService.RenderStepped:Connect(function()
-			if projSilentAimCircle then
-				local camera = workspace.CurrentCamera
-				if camera then
-					local viewportSize = camera.ViewportSize
-					projSilentAimCircle.Position = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
-					projSilentAimCircle.Radius = (Options.ProjSilentAimFOV and Options.ProjSilentAimFOV.Value) or 100
-					projSilentAimCircle.Visible = true
-				end
-			end
-		end))
-		Library:Notify({ Title = "AIMBOT", Description = "Silent Aim Enabled", Time = 2 })
-	else
-		Library:Notify({ Title = "AIMBOT", Description = "Silent Aim Disabled", Time = 2 })
-	end
-end)
-
 Toggles.KillAura:OnChanged(function()
 	disconnect("KillAura")
 	if Toggles.KillAura.Value then
@@ -1849,7 +1684,7 @@ Toggles.AutoSwing:OnChanged(function()
 	if Toggles.AutoSwing.Value then
 		_G.T = true
 		track("AutoSwing", RunService.Heartbeat:Connect(function()
-			if _G.T and tick() - lastAutoSwing >= 0.2 then
+			if _G.T and tick() - lastAutoSwing >= 0.1 then
 				local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
 				if tool then
 					tool:Activate()
@@ -3254,6 +3089,55 @@ VisualFPS:AddToggle("DisableShadows", {
 	end,
 })
 
+local originalTransparencies = {}
+
+VisualFPS:AddToggle("RemoveDroppedItems", {
+	Text = "Remove Dropped Items",
+	Default = false,
+	Callback = function(state)
+		if state then
+			-- Hide all existing dropped items
+			for _, item in ipairs(CollectionService:GetTagged("DROPPED_ITEM")) do
+				if item:IsA("BasePart") then
+					if not originalTransparencies[item] then
+						originalTransparencies[item] = item.Transparency
+					end
+					item.Transparency = 1
+					item.CanCollide = false
+				end
+			end
+			
+			-- Hide new dropped items when added
+			track("RemoveDroppedItems_Added", CollectionService:GetInstanceAddedSignal("DROPPED_ITEM"):Connect(function(item)
+				if Toggles.RemoveDroppedItems.Value and item:IsA("BasePart") then
+					if not originalTransparencies[item] then
+						originalTransparencies[item] = item.Transparency
+					end
+					item.Transparency = 1
+					item.CanCollide = false
+				end
+			end))
+			
+			-- Show notifications
+			Library:Notify({ Title = "Remove Dropped Items", Description = "Enabled", Time = 2 })
+		else
+			-- Restore all dropped items
+			for item, original in pairs(originalTransparencies) do
+				if item and item.Parent then
+					item.Transparency = original
+					item.CanCollide = true
+				end
+			end
+			table.clear(originalTransparencies)
+			
+			-- Disconnect the connection
+			disconnect("RemoveDroppedItems_Added")
+			
+			Library:Notify({ Title = "Remove Dropped Items", Description = "Disabled", Time = 2 })
+		end
+	end,
+})
+
 VisualFPS:AddToggle("LowTextures", {
 	Text = "Low Textures",
 	Default = false,
@@ -3664,6 +3548,98 @@ Toggles.InfiniteZoom:OnChanged(function()
 	else
 		LocalPlayer.CameraMaxZoomDistance = 400
 		LocalPlayer.CameraMinZoomDistance = 0.5
+	end
+end)
+
+--- ==========================================
+--- BOSS FARM
+--- ==========================================
+local BossFarmLeft = Tabs["Boss Farm"]:AddLeftGroupbox("Boss Farm", "skull")
+local BossFarmRight = Tabs["Boss Farm"]:AddRightGroupbox("Settings", "sliders-horizontal")
+local BossFarmTools = Tabs["Boss Farm"]:AddRightGroupbox("Tools", "wrench")
+
+BossFarmLeft:AddToggle("AdamantiteFarm", {
+	Text = "Adamantite Farm",
+	Default = false,
+})
+
+-- Adamantite Farm variables
+local adamantiteScreenGui = nil
+local adamantiteHeartbeatConn = nil
+
+Toggles.AdamantiteFarm:OnChanged(function()
+	disconnect("AdamantiteFarm")
+	if Toggles.AdamantiteFarm.Value then
+		local Players = game:GetService("Players")
+		local LocalPlayer = Players.LocalPlayer
+		local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+		local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+
+		local locations = {
+			Vector3.new(-1670.36572265625, 520.3575439453125, 7286.283203125),
+			Vector3.new(-1734.2337646484375, 529.2215576171875, 7296.73388671875),
+			Vector3.new(-1705.7255859375, 520.3575439453125, 7342.8310546875),
+			Vector3.new(-1792.862548828125, 519.5882568359375, 7286.28271484375),
+			Vector3.new(-1757.49462890625, 519.5882568359375, 7237.10498046875)
+		}
+
+		local currentLocationIndex = 1
+		local stayAtLocation = false
+
+		adamantiteScreenGui = Instance.new("ScreenGui")
+		adamantiteScreenGui.Name = "AdamantiteFarmGui"
+		adamantiteScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+		local AutoSamuraiButton = Instance.new("TextButton")
+		AutoSamuraiButton.Name = "AutoSamuraiButton"
+		AutoSamuraiButton.Size = UDim2.new(0, 200, 0, 50)
+		AutoSamuraiButton.Position = UDim2.new(0.5, -250, 0.75, 0)
+		AutoSamuraiButton.Text = "Auto Samurai"
+		AutoSamuraiButton.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
+		AutoSamuraiButton.TextColor3 = Color3.new(1, 1, 1)
+		AutoSamuraiButton.Font = Enum.Font.SourceSansBold
+		AutoSamuraiButton.TextSize = 20
+		AutoSamuraiButton.Parent = adamantiteScreenGui
+
+		local StopButton = Instance.new("TextButton")
+		StopButton.Name = "StopButton"
+		StopButton.Size = UDim2.new(0, 200, 0, 50)
+		StopButton.Position = UDim2.new(0.5, -250, 0.85, 0)
+		StopButton.Text = "Stop"
+		StopButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+		StopButton.TextColor3 = Color3.new(1, 1, 1)
+		StopButton.Font = Enum.Font.SourceSansBold
+		StopButton.TextSize = 20
+		StopButton.Parent = adamantiteScreenGui
+
+		track("AdamantiteFarm", AutoSamuraiButton.MouseButton1Click:Connect(function()
+			currentLocationIndex = currentLocationIndex + 1
+			if currentLocationIndex > #locations then
+				currentLocationIndex = 1
+			end
+
+			if HumanoidRootPart then
+				HumanoidRootPart.CFrame = CFrame.new(locations[currentLocationIndex])
+				stayAtLocation = true
+			end
+		end))
+
+		track("AdamantiteFarm", StopButton.MouseButton1Click:Connect(function()
+			stayAtLocation = false
+			currentLocationIndex = 1
+		end))
+
+		adamantiteHeartbeatConn = RunService.Heartbeat:Connect(function()
+			if stayAtLocation and HumanoidRootPart then
+				HumanoidRootPart.CFrame = CFrame.new(locations[currentLocationIndex])
+			end
+		end)
+		track("AdamantiteFarm", adamantiteHeartbeatConn)
+	else
+		if adamantiteScreenGui then
+			adamantiteScreenGui:Destroy()
+			adamantiteScreenGui = nil
+		end
 	end
 end)
 
@@ -4412,6 +4388,9 @@ Library:OnUnload(function()
 	if Toggles.DisableShadows and Toggles.DisableShadows.Value then
 		Toggles.DisableShadows:SetValue(false)
 	end
+	if Toggles.AdamantiteFarm and Toggles.AdamantiteFarm.Value then
+		Toggles.AdamantiteFarm:SetValue(false)
+	end
 	if Toggles.UltraFPSBoost and Toggles.UltraFPSBoost.Value then
 		Toggles.UltraFPSBoost:SetValue(false)
 	end
@@ -4423,9 +4402,6 @@ Library:OnUnload(function()
 	end
 	if Toggles.AimbotLockOn and Toggles.AimbotLockOn.Value then
 		Toggles.AimbotLockOn:SetValue(false)
-	end
-	if Toggles.ProjSilentAim and Toggles.ProjSilentAim.Value then
-		Toggles.ProjSilentAim:SetValue(false)
 	end
 	if Toggles.AttachToggle and Toggles.AttachToggle.Value then
 		Toggles.AttachToggle:SetValue(false)
@@ -4441,7 +4417,6 @@ Library:OnUnload(function()
 	end
 	pcall(function()
 		if fovCircle then fovCircle:Remove() end
-		if projSilentAimCircle then projSilentAimCircle:Remove() end
 		if cursorDrawings then
 			if cursorDrawings.square then cursorDrawings.square:Remove() end
 			if cursorDrawings.circle then cursorDrawings.circle:Remove() end
