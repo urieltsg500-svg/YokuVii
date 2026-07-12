@@ -2,7 +2,7 @@
 -- Docs: https://docs.mspaint.cc/obsidian
 
 if getgenv().TSG_OBSIDIAN_LOADED then
-	return warn("[TSG] Script already loaded Ã¢â‚¬â€ rejoin to re-execute.")
+	return warn("[TSG] Script already loaded ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â rejoin to re-execute.")
 end
 getgenv().TSG_OBSIDIAN_LOADED = true
 
@@ -307,7 +307,6 @@ local Tabs = {
 	Farming = Window:AddTab("Farming", "pickaxe"),
 	Teleport = Window:AddTab("Teleport", "map-pin"),
 	Visuals = Window:AddTab("Visuals", "eye"),
-	["Boss Farm"] = Window:AddTab("Boss Farm", "skull"),
 	["Fun Box"] = Window:AddTab("Fun Box", "gamepad"),
 	["UI Settings"] = Window:AddTab("UI Settings", "settings"),
 }
@@ -2962,7 +2961,7 @@ local waypoints = {}
 local function updateWaypointDropdown()
 	local list = {}
 	for name in pairs(waypoints) do
-		table.insert(list, "ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Âµ " .. name)
+		table.insert(list, "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Âµ " .. name)
 	end
 	table.sort(list)
 	Options.WaypointList:SetValues(list)
@@ -3091,58 +3090,48 @@ VisualFPS:AddToggle("DisableShadows", {
 
 local originalTransparencies = {}
 
-VisualFPS:AddToggle("RemoveDroppedItems", {
-	Text = "Remove Dropped Items",
+VisualFPS:AddToggle("FixDroppedItems", {
+	Text = "Fix Dropped Items",
 	Default = false,
 	Callback = function(state)
-		pcall(function()
-			if state then
-				-- Hide all existing dropped items
-				for _, item in ipairs(CollectionService:GetTagged("DROPPED_ITEM")) do
-					if item:IsA("BasePart") then
-						if not originalTransparencies[item] then
-							originalTransparencies[item] = item.Transparency
-						end
-						pcall(function()
-							item.Transparency = 1
-							item.CanCollide = false
-						end)
+		if state then
+			-- Hide all existing dropped items
+			for _, item in ipairs(CollectionService:GetTagged("DROPPED_ITEM")) do
+				if item:IsA("BasePart") then
+					if not originalTransparencies[item] then
+						originalTransparencies[item] = item.Transparency
 					end
+					item.Transparency = 1
+					item.CanCollide = false
 				end
-				
-				-- Hide new dropped items when added
-				track("RemoveDroppedItems_Added", CollectionService:GetInstanceAddedSignal("DROPPED_ITEM"):Connect(function(item)
-					if Toggles.RemoveDroppedItems.Value and item:IsA("BasePart") then
-						if not originalTransparencies[item] then
-							originalTransparencies[item] = item.Transparency
-						end
-						pcall(function()
-							item.Transparency = 1
-							item.CanCollide = false
-						end)
-					end
-				end))
-				
-				-- Show notifications
-				Library:Notify({ Title = "Remove Dropped Items", Description = "Enabled", Time = 2 })
-			else
-				-- Restore all dropped items
-				for item, original in pairs(originalTransparencies) do
-					if item and item.Parent then
-						pcall(function()
-							item.Transparency = original
-							item.CanCollide = true
-						end)
-					end
-				end
-				originalTransparencies = {} -- Clear the table instead of table.clear
-				
-				-- Disconnect the connection
-				disconnect("RemoveDroppedItems_Added")
-				
-				Library:Notify({ Title = "Remove Dropped Items", Description = "Disabled", Time = 2 })
 			end
-		end)
+			
+			-- Hide new dropped items when added
+			track("FixDroppedItems_Added", CollectionService:GetInstanceAddedSignal("DROPPED_ITEM"):Connect(function(item)
+				if Toggles.FixDroppedItems.Value and item:IsA("BasePart") then
+					if not originalTransparencies[item] then
+						originalTransparencies[item] = item.Transparency
+					end
+					item.Transparency = 1
+					item.CanCollide = false
+				end
+			end))
+			
+			Library:Notify({ Title = "Fix Dropped Items", Description = "Enabled", Time = 2 })
+		else
+			-- Restore all dropped items
+			for item, original in pairs(originalTransparencies) do
+				if item and item.Parent then
+					item.Transparency = original
+					item.CanCollide = true
+				end
+			end
+			originalTransparencies = {}
+			
+			disconnect("FixDroppedItems_Added")
+			
+			Library:Notify({ Title = "Fix Dropped Items", Description = "Disabled", Time = 2 })
+		end
 	end,
 })
 
@@ -3558,99 +3547,7 @@ Toggles.InfiniteZoom:OnChanged(function()
 		LocalPlayer.CameraMinZoomDistance = 0.5
 	end
 end)
-
---- ==========================================
---- BOSS FARM
---- ==========================================
-local BossFarmLeft = Tabs["Boss Farm"]:AddLeftGroupbox("Boss Farm", "skull")
-local BossFarmRight = Tabs["Boss Farm"]:AddRightGroupbox("Settings", "sliders-horizontal")
-local BossFarmTools = Tabs["Boss Farm"]:AddRightGroupbox("Tools", "wrench")
-
-BossFarmLeft:AddToggle("AdamantiteFarm", {
-	Text = "Adamantite Farm",
-	Default = false,
-})
-
--- Adamantite Farm variables
-local adamantiteScreenGui = nil
-local adamantiteHeartbeatConn = nil
-
-Toggles.AdamantiteFarm:OnChanged(function()
-	disconnect("AdamantiteFarm")
-	if Toggles.AdamantiteFarm.Value then
-		local Players = game:GetService("Players")
-		local LocalPlayer = Players.LocalPlayer
-		local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-		local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
-
-		local locations = {
-			Vector3.new(-1670.36572265625, 520.3575439453125, 7286.283203125),
-			Vector3.new(-1734.2337646484375, 529.2215576171875, 7296.73388671875),
-			Vector3.new(-1705.7255859375, 520.3575439453125, 7342.8310546875),
-			Vector3.new(-1792.862548828125, 519.5882568359375, 7286.28271484375),
-			Vector3.new(-1757.49462890625, 519.5882568359375, 7237.10498046875)
-		}
-
-		local currentLocationIndex = 1
-		local stayAtLocation = false
-
-		adamantiteScreenGui = Instance.new("ScreenGui")
-		adamantiteScreenGui.Name = "AdamantiteFarmGui"
-		adamantiteScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
-		local AutoSamuraiButton = Instance.new("TextButton")
-		AutoSamuraiButton.Name = "AutoSamuraiButton"
-		AutoSamuraiButton.Size = UDim2.new(0, 200, 0, 50)
-		AutoSamuraiButton.Position = UDim2.new(0.5, -250, 0.75, 0)
-		AutoSamuraiButton.Text = "Auto Samurai"
-		AutoSamuraiButton.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
-		AutoSamuraiButton.TextColor3 = Color3.new(1, 1, 1)
-		AutoSamuraiButton.Font = Enum.Font.SourceSansBold
-		AutoSamuraiButton.TextSize = 20
-		AutoSamuraiButton.Parent = adamantiteScreenGui
-
-		local StopButton = Instance.new("TextButton")
-		StopButton.Name = "StopButton"
-		StopButton.Size = UDim2.new(0, 200, 0, 50)
-		StopButton.Position = UDim2.new(0.5, -250, 0.85, 0)
-		StopButton.Text = "Stop"
-		StopButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-		StopButton.TextColor3 = Color3.new(1, 1, 1)
-		StopButton.Font = Enum.Font.SourceSansBold
-		StopButton.TextSize = 20
-		StopButton.Parent = adamantiteScreenGui
-
-		track("AdamantiteFarm", AutoSamuraiButton.MouseButton1Click:Connect(function()
-			currentLocationIndex = currentLocationIndex + 1
-			if currentLocationIndex > #locations then
-				currentLocationIndex = 1
-			end
-
-			if HumanoidRootPart then
-				HumanoidRootPart.CFrame = CFrame.new(locations[currentLocationIndex])
-				stayAtLocation = true
-			end
-		end))
-
-		track("AdamantiteFarm", StopButton.MouseButton1Click:Connect(function()
-			stayAtLocation = false
-			currentLocationIndex = 1
-		end))
-
-		adamantiteHeartbeatConn = RunService.Heartbeat:Connect(function()
-			if stayAtLocation and HumanoidRootPart then
-				HumanoidRootPart.CFrame = CFrame.new(locations[currentLocationIndex])
-			end
-		end)
-		track("AdamantiteFarm", adamantiteHeartbeatConn)
-	else
-		if adamantiteScreenGui then
-			adamantiteScreenGui:Destroy()
-			adamantiteScreenGui = nil
-		end
-	end
-end)
-
+ 
 -- ==========================================
 -- FUN BOX
 -- ==========================================
@@ -4395,6 +4292,9 @@ Library:OnUnload(function()
 	end
 	if Toggles.DisableShadows and Toggles.DisableShadows.Value then
 		Toggles.DisableShadows:SetValue(false)
+	end
+	if Toggles.FixDroppedItems and Toggles.FixDroppedItems.Value then
+		Toggles.FixDroppedItems:SetValue(false)
 	end
 	if Toggles.AdamantiteFarm and Toggles.AdamantiteFarm.Value then
 		Toggles.AdamantiteFarm:SetValue(false)
